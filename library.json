@@ -1,0 +1,19 @@
+{
+    "name": "ShockCollar",
+    "description": "Control a PetRainer shock collar",
+    "keywords": "shock, collar",
+    "authors": [
+        {
+            "name": "Ruru"
+            "email": "ruru67@yahho.com",
+            "url": "http://rurubound.wordpress.com",
+            "maintainer": true
+        }
+    ],
+    "version": "2.0",
+    "homepage": "http://rurubound.wordpress.com",
+    "frameworks": "Arduino",
+    "examples": [
+        "examples/*/*.pde"
+    ]
+}
