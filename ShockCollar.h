@@ -38,7 +38,8 @@ public:
 	int (*interrupt)(void);		// Interrupt poll function
 
 	// Methods
-	void begin(char pin, char led = -1);
+	void begin(char pin, char led);
+	void begin(char pin) { begin(pin, -1); }
 	int  command(collar_cmd cmd, char chan, char pwr, long durn);
 	void keepalive();
 	int  packet(collar_pkt &pkt, collar_key key, char chan,

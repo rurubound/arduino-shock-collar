@@ -77,7 +77,7 @@ int ShockCollar::packet(collar_pkt &pkt,
 // imposed in the next call. That means the inter-packet gap must include the
 // off delay for the trailer bit.
 //
-static inline void ShockCollar::sendpulse(long &clk, int on, int off) {
+void ShockCollar::sendpulse(long &clk, int on, int off) {
 	delayMicroseconds(clk - micros());
 	digitalWrite(collar_pin, HIGH);
 	delayMicroseconds(on - 2);
@@ -173,7 +173,7 @@ void ShockCollar::keepalive() {
 //
 // Sets up the radio output and LED pins
 //
-void ShockCollar::begin(char pin, char led = -1) {
+void ShockCollar::begin(char pin, char led) {
 	collar_pin = pin;
 	collar_led = led;
 	key = 0x1234;			// Default
@@ -249,7 +249,7 @@ char ShockCollarRemote::receive() {
 	if(bit >= 40) return 0;
 	pkt[bit >> 3] |= b << (7 - (bit & 7));;
 	t = ct - st;			// Time since start bit
-	if(++bit != 40 || t < 37000 || t > 42000) return;
+	if(++bit != 40 || t < 37000 || t > 42000) return 0;
 
 	// Extract the bits from the packet
 	// pkt[4] is pkt[0] complemented and reversed. So when we check

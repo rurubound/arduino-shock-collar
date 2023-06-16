@@ -6,10 +6,10 @@ handheld remote control.
 -- Introduction --
 
 This code is based on work done by DeviantDesigns:
-  http://deviant-designs.co.uk/2019/03/29/arduino-controlled-shock-collar/
+  https://www.youtube.com/watch?v=kmvZVxP5Nvc
 
 and code by Smouldery and mikey_dk:
-  https://github.com/smouldery/shock-collar-control/blob/master/Arduino%20Modules/transmitter_vars.ino
+  https://github.com/smouldery/shock-collar-control/
 
 Note that while I used Smouldery's code and underlying work to determine
 packet formats, encoding et c, and I thank them for doing that ground
@@ -117,7 +117,7 @@ int command(collar_cmd cmd, char chan, char powr, long durn)
 
 	There are four "shortcut" methods that just call command():
 
-		led(  chan, durn)		Light the LED
+		led(  chan, durn)	Light the LED
 		beep( chan, durn)	Beep the buzzer
 		vib(  chan, durn, pwr)	Buzz the vibrator	
 		zap(  chan, durn, pwr)	Zap the brat
@@ -162,22 +162,24 @@ running. command() will do this for you.
 Here is a simple example, using a button wired between pin 3 and ground
 to activate a shock on collar channel 1, key 0xbeef:
 
+-------------------------------------------------------------------------------
 #include <ShockCollar.h>
-ShockCollar collar;			// Declare object
+ShockCollar collar;	// Declare object
 
-void setup() {
+void setup() {		// Initial set-up
 	collar.begin(2);		// Initialise collar, pin 2 is data
 	collar.kchan = 1;		// Set keepalive channel
 	collar.key = 0xbeef;		// Choose a different key
-	ponMode(3, INPUT_PULLUP);	// Pin 3 is the activate button
+	pinMode(3, INPUT_PULLUP);	// Pin 3 is the activate button
 }
 
-loop() {
+loop() {		// Loop de loop
 	collar_keepalive();		// Keep the collar alive
 	if(dgitalRead(3))		// If button pressed ...
 		collar.zap(1, 100, 500);// Activate the collar at full
 					// power for 500ms.
 }
+-------------------------------------------------------------------------------
 
 The code is intended to operate up to two collars on the same collar key,
 on channels 1 & 2. command() and keepalive() can take 3 as the channel
@@ -257,33 +259,34 @@ char receive()
 	the protocol relies on timing the length of pulses.
 
 
-// A simple example, that re-purposes the controller to act as a remote
-// for two relays:
-//
+Here's a simple example that re-purposes the controller to act as a remote
+for two relays:
+
+-------------------------------------------------------------------------------
 #include <ShockCollar.h>
-ShockCollarRemote remote;
+ShockCollarRemote remote;	// Remote object
+char onoff[2];			// Relay status
 
-char onoff[2];		// Relay status
-
-void setup() {
+void setup() {			// Initial set-up
 	int relay;
 	for(relay = 0; relay < 2; relay++) {	// Initialise two relays
 		onoff[relay] = 0;		// Off
-		pinMode(10 + relay, OUTPUT);	// Set up control pimns
-		digitalWrite(10 + relay, 0);
+		pinMode(10 + relay, OUTPUT);	// Set up control pins
+		digitalWrite(10 + relay, 0);	// Pins 10 & 11.
 	}
-	remote.begin(13);			// Use pin 13 for the receiver
+	remote.begin(15);			// Use pin 15 for the receiver
 }
 
-void loop() {
+void loop() {			// Loop de loop
 	int relay;
-	if(remote.receive() != 1) return; 	// Command received
+	if(remote.receive() != 1) return; 	// Command received?
 	if(remote.command != COLLAR_LED) return;// Need LED command
-	remote.expect_key = remote.key;		// Lock to 1st remote  heard
+	remote.expect_key = remote.key;		// Lock to 1st remote used
 	relay = collar.chan - 1;   		// Pick relay	
 	onoff[relay] = ! onoff[relay]; 		// Toggle status
 	digitalWrite(10 + relay, onoff[relay]);	// And set the relay.
 }
+-------------------------------------------------------------------------------
 
 
 -- Shock Collar Protocol --
@@ -334,14 +337,40 @@ Example: Chan=1, Key=0xabcd, Mode=ZAP, Power=100 (0x64)
 Notes
 [1] In Smouldery's code, the delays were 741 and 247, presumably to
     allow for code overhead. We clock using micros() to keep the bit
-    timing aligned, and any variation due to overhead appears when the
-    data is off (0). The actual device doesn't seem too fussy.
+    timing aligned. The off delay is actually processed at the start of
+    each bit, so we don't have to worry about how long the inter-bit
+    processing takes - we just wait the remaining time before starting
+    the on pulse of the next bit. The actual device doesn't seem too
+    fussy. (The receiver code allows for a lot of slop in the timings,
+    mainly to allow for delays between samples.)
 [2] Smouldery's code had the key and power at 17 and 7 bits
     respectively. Experimentation showed that a 17th "key" bit is not
     used as part of the identity (i.e setting it to 1 or 0 did not
     affect whether a collar responded), and that the fields are as above
-    with a 16 bit key and 8 bit power field. Power values above 100 are
-    accepted but appear to do the same thing as power 100.
+    with a 16 bit key and 8 bit power field. Power values above 101-255
+    are accepted, but appear to simply be treated as 100.
+
+
+-- Example code --
+
+The code comes with two example / utility sketches. See the comments
+within them for finer details.
+
+examples/shock-collar-serial.ino
+
+This sketch provides a simple interface that can be used by scripts
+running on a host computer to control a collar.
+
+examples/shock-collar-remote.ino
+
+This sketch provides a demonstration of the ShockCollarRemote object,
+which can be used to identify what a collar remote is sending (e.g. to
+allow a collar and controller to be given the same 
+
+
+
+
+
 
 
 -- Author --
