@@ -19,28 +19,30 @@ footprint).
 
 -- Hardware --
 
-This code was tested on a mini Arduino "Beetle", a Pro Micro clone in a
-smaller form factor, connected to a simple 433 MHz ASK transmitter (see
-the Deviant Designs link). Connect the radio's DATA pin to data pin 14 of
-the Beetle, VCC to 5V, and GND to GND. USB power is sufficient. This
-arrangement allows the two small boards to be mounted piggyback, with the
-antenna opposite the USB plug. It has also been tested on other small 
-Aurduino lookalikes such as the Nano (although pin 2 is more convenient on
-that board). You'll need an antenna as well.
+This code was tested on Arduino-style ATmega32U4 boards (a SparkFun Pro
+Micro clone, and a an SS Micro, a similar board with less pins brough
+out to make a smaller form factor. These are coupled with a 433 MHz ASK 
+transmitter (to test the conllar control) and receiver (to test receiving
+commands from the handheld controller); these typically come as a pair.
+
+For the transmitter, onnect the radio's DATA pin to data pin 14 of the
+SS Micro Vcc to 5V, and GND to GND. USB power is sufficient. This
+arrangement allows the two small boards to be mounted piggyback, with
+the antenna opposite the USB plug. (I have only tested the receiver using
+a breadboarded Pro Micro.) You'll need an antenna as well.
 
 AliExpress links for hardware:
 
-"Beetle" microcontroller:  https://www.aliexpress.com/item/32775220354.html
-Transmitter module:        https://www.aliexpress.com/item/32608684824.html
+SS Micro board:            https://www.aliexpress.com/item/32775220354.html
+433 MHz xmitter/receiver:  https://www.aliexpress.com/item/32608684824.html
 433 MHz antenna:           https://www.aliexpress.com/item/4000960125591.html
 Petrainer collar/remote:   https://www.aliexpress.com/item/32947131768.html
 Petrainer collar only:     https://www.aliexpress.com/item/32606845436.html
 
 The collar links are for the rechargeable version; there are cheaper
 versions of the same collar/remote that use removable batteries. The
-transmitter module also comes with a receiver, which can be used with
-the ShockCollarRemote object to receive commands from the handheld
-remote.
+transmitter module comes with a receiver, which can be used with the
+ShockCollarRemote object to receive commands from the handheld remote.
 
 Note that the collars need to be paired with the controller. This is
 done by pressing the reset button on the collar and sending the collar a
@@ -113,7 +115,7 @@ int command(collar_cmd cmd, char chan, char powr, long durn)
 		the (negated) count of packets to send (i.e. -3 will
 		send three packets). (Packets take about 47ms each.)
 
-	Note that he collar key should be set up (it defauilts to 0x1234).
+	Note that the collar key should be set up (it defauilts to 0x1234).
 
 	There are four "shortcut" methods that just call command():
 
@@ -364,13 +366,9 @@ running on a host computer to control a collar.
 examples/shock-collar-remote.ino
 
 This sketch provides a demonstration of the ShockCollarRemote object,
-which can be used to identify what a collar remote is sending (e.g. to
-allow a collar and controller to be given the same 
-
-
-
-
-
+which can be used to identify what a collar remote is sending, e.g. to
+allow an Arduino controller to be given the same key as a handheld
+controller, allowing both to control the same collar(s).
 
 
 -- Author --
