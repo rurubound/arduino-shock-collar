@@ -48,17 +48,13 @@ public:
 
 	// Shortcut methods
 	int  led(char chan, long durn) {
-		return command(COLLAR_LED, chan,  1, durn);
-	}
+		return command(COLLAR_LED,  chan, 1,   durn);	}
 	int  beep(char chan, long durn) {
-		return command(COLLAR_BEEP, chan, 1, durn);
-	}
-	int  vib(char chan, long durn, char pwr = 100) {
-		return command(COLLAR_VIB, chan, pwr, durn);
-	}
-	int  led(char chan, long durn, char pwr = 100) {
-		return command(COLLAR_ZAP, chan,  pwr, durn);
-	}
+		return command(COLLAR_BEEP, chan, 1,   durn);	}
+	int  vib(char chan, long durn, char pwr) {
+		return command(COLLAR_VIB,  chan, pwr, durn);	}
+	int  led(char chan, long durn, char pwr) {
+		return command(COLLAR_ZAP, chan,  pwr, durn);	}
 };
 
 // Shock collar remote receiver

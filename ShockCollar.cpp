@@ -21,47 +21,62 @@
 // cmd  = command (1..4)
 // pwr	= power level (0..100)
 //
+// The packet format, in bits, is as follows, fields sent high-order bit first 
+// (left to right):
+//
+//	Octet	Field	  Bits	Value	   
+//	0	Lead-in   1	1
+//		Chan	  3	Ch1=000; Ch2=111
+//		Mode	  4	LED=1000; BEEP=0100; VIB=0010; ZAP=0001
+//	1-2	Key	  16	Identity field, specific to transmitter[2]
+//	3	Power	  8	Power level[2]
+//	4	ModeX	  4	LED=1110; BEEP=1101; VIB=1011; ZAP=0111
+//		ChanX	  3	Ch1=111; Ch2=000
+//	4/5	Trailer   2	00 (Note, 2nd trailer bit not strored in pkt)
+//
+// Example: Chan=1, Key=0xabcd, Mode=ZAP, Power=100 (0x64)
+//	Octet:	     0	       | 1	 |2	  | 3	    | 4 	|5
+//	Bit:	     7 654 3210| 76543210|76543210| 76543210| 7654 321 0|7
+//			       |   111111|11112222| 22222233| 3333 333 3|4
+//	Wire bit:    0 123 4567| 89012345|67890123| 45678901| 2345 678 9|0
+//	Fields:      l ccc mmmm| kkkkkkkk|kkkkkkkk| pppppppp| MMMM CCC t|t
+//	Field bits:  - 2-0 3--0|15------8|7------0| 7------0| 3--0 2-0 -|-
+//	Packet bits: 1 000 0001| 10101011|11001101| 01100100| 0111 111 0|0
+//	Hex	     8	   1   | a   b	 |c   d   | 6	4   | 7    e	|0
+//	Fields: l=Lead-in c=Chan m=Mode k=Key p=Power M=ModeX C=ChanX t=Trailer
+//
 int ShockCollar::packet(collar_pkt &pkt,
 			collar_key key, char chan, collar_cmd cmd, char pwr) {
-	unsigned char cn, cx, mn, mx;
+	unsigned char h, t;	// pkt[0] and pkt[4] values
 
-	// Set up some values based on parameters
-	// cn = Ch1: 000, Ch2: 111
-	// cx = channel inverted
+	// Set up the composite values for pkt[0] & pkt[4] (in h & t).
+	// First, set the Lead-in, Channel, ChanX and Trailer values, based on
+	// the channel number.
 	//
 	pkt[0] = 0;		// Force invalid packet
-	switch(chan) {
-	case 1: 		cn = 0b000;  cx = 0b111;	break;
-	case 2: 		cn = 0b111;  cx = 0b000;	break;
+	switch(chan) {		//     lcccmmmm         MMMMCCCt
+	case 1: 		h =  0b10000000;  t = 0b00001110;	break;
+	case 2: 		h =  0b11110000;  t = 0b00000000;	break;
 	default:		return 0;
 	}
 
-	// mn = command value
-	// mx = command value reversed and inverted
+	// And then apply the Mode and ModeX values based on the command.
 	//
-	switch(cmd) {
-	case COLLAR_LED:	mn = 0b1000; mx = 0b1110;	break;
-	case COLLAR_BEEP:	mn = 0b0100; mx = 0b1101;	break;
-	case COLLAR_VIB:	mn = 0b0010; mx = 0b1011;	break;
-	case COLLAR_ZAP:	mn = 0b0001; mx = 0b0111;	break;
+	switch(cmd) {		//     lcccmmmm         MMMMCCCt
+	case COLLAR_LED:	h |= 0b00001000; t |= 0b11100000;	break;
+	case COLLAR_BEEP:	h |= 0b00000100; t |= 0b11010000;	break;
+	case COLLAR_VIB:	h |= 0b00000010; t |= 0b10110000;	break;
+	case COLLAR_ZAP:	h |= 0b00000001; t |= 0b01110000;	break;
 	default:		return 0;
 	}
 
 	// Assemble the packet.
 	//
-	// This could be done with a struct and bit fields, but the
-	// bit order of the transmission vs the endianness of the Arduino
-	// makes that as confusing as heck. Doing it this way means that
-	// everything reads left to right. 
-	//
-	pkt[0]	= 1  << 7		// lead-in bit
-		| cn << 4		// Channel
-		| mn;			// Mode
+	pkt[0]	= h;			// Lead-in, Channel, Mode
 	pkt[1]	= key >> 8;		// Transmitter key, MSB
 	pkt[2]	= key;			// Transmitter key, LSB
 	pkt[3]	= pwr;			// Power
-	pkt[4]	= mx << 4		// Mode, reversed and inverted
-		| cx << 1;		// Channel, inverted (plus trailer bit)
+	pkt[4]	= t;			// ModeX, ChanX, trailer
 	return 1;
 }
 
@@ -76,6 +91,7 @@ int ShockCollar::packet(collar_pkt &pkt,
 // Note that call returns after sending the on pulse; the off delay is
 // imposed in the next call. That means the inter-packet gap must include the
 // off delay for the trailer bit.
+// Note that this code blocks during packet transmission.
 //
 void ShockCollar::sendpulse(long &clk, int on, int off) {
 	delayMicroseconds(clk - micros());
@@ -109,7 +125,7 @@ void ShockCollar::send(collar_pkt &pkt) {
 		if((pkt[bit >> 3] >> (7 - (bit & 7))) & 1)
 			sendpulse(clk, BIT_ONE);	// High-order first
 		else	sendpulse(clk, BIT_ZERO);
-	sendpulse(clk, BIT_ZERO);			// Send trailer bit
+	sendpulse(clk, BIT_ZERO);			// Send 2nd trailer bit
 	if(collar_led >= 0) digitalWrite(collar_led, LOW);
 	delayMicroseconds(9000);			// 9ms inter-packet
 }
@@ -124,6 +140,8 @@ void ShockCollar::send(collar_pkt &pkt) {
 // pwr	= power level (0..100)
 // durn = Duration in ms, or negative packet count
 // intr = function to call to check if function should be interrupted
+//	  Note that intr() is only called about once every 50ms, i.e.
+//	  between transmitted packets.
 // Return 0 on error, 1 on success, 2 if interrupted.
 //
 int ShockCollar::command(collar_cmd cmd, char chan, char pwr, long durn) {
@@ -142,14 +160,13 @@ int ShockCollar::command(collar_cmd cmd, char chan, char pwr, long durn) {
 		if(interrupt) if(interrupt()) return 2;
 		if((durn >= 0 && millis() - t >= durn) ||
 		   (durn  < 0 && ++durn >= 0))
-			break;
+			return 1;
 
 		// Send packets
 		//
 		if(chan & 1) send(pkt1);
 		if(chan & 2) send(pkt2);
 	}
-	return 1;
 }
 
 
@@ -204,7 +221,7 @@ void ShockCollarRemote::begin(char pin) {
 //-- Monitor a pin to receive collar command packets --------------------------
 //
 char ShockCollarRemote::receive() {
-	char i, b;
+	char b;
 	char c, p, m, cx, mx;
 	collar_cmd cmd;
 	collar_key k;
@@ -213,12 +230,12 @@ char ShockCollarRemote::receive() {
 	// Read input pin to see if it has changed.
 	// If it's the start of a pulse, record the time.
 	//
-	i = digitalRead(remote_pin);	// Get pin state
-	if(i == state) return 0;	// If same, we're done
-	state = i;			// Save state
+	b = digitalRead(remote_pin);	// Get pin state
+	if(b == state) return 0;	// If no change, we're done
+	state = b;			// Save state
 	ct = micros();			// Get time
-	if(state == 1) {
-		pt = ct;		// Save pulse start time
+	if(state == 1) {		// Pulse start?
+		pt = ct;		// Save start time
 		return 0;		// And adios!
 	}
 
@@ -233,9 +250,9 @@ char ShockCollarRemote::receive() {
 		b = 0;
 	else if(t > 600 && t < 900) 	// ~750us = 1
 		b = 1;
-	else if(t > 1300 && t < 1800) {	// ~1500us = start
-		for(i = 0; i < 5; i++)	// Erase the packet
-			pkt[i] = 0;
+	else if(t > 1300 && t < 1700) {	// ~1500us = start
+		for(b = 0; b < 5; b++)	// Erase the packet
+			pkt[b] = 0;
 		bit = 0;		// Start bit counter
 		st = ct;		// and record start time
 		return 0;
@@ -243,11 +260,11 @@ char ShockCollarRemote::receive() {
 	else	return 0;		// Noise. Shrug.
 
 	// We have a data bit. Put it in the packet (if there's room)
-	// Done if we don;t have 40 bits yet ... or if the timing of the
+	// Done if we don't have 40 bits yet ... or if the timing of the
 	// packet is off. (Should be just under 40ms).
 	//
 	if(bit >= 40) return 0;
-	pkt[bit >> 3] |= b << (7 - (bit & 7));;
+	pkt[bit >> 3] |= b << (7 - (bit & 7));
 	t = ct - st;			// Time since start bit
 	if(++bit != 40 || t < 37000 || t > 42000) return 0;
 
@@ -263,11 +280,12 @@ char ShockCollarRemote::receive() {
 	mx = pkt[4] >> 4;		// ModeX (see docs)
 	cx = pkt[4] & 0x0f;		// ChanX & trailer bit
 
-	// Check validity of key (if requested) and channel.
-	// c includes lead-in as bit 3, set to 1; cx includes trailer as
-	// bit 0, set to 0.
+	// Check validity of key (if requested) 
 	//
 	if(expect_key && k != expect_key)	return 0;
+
+	// Check channel, lead-in & trailer bits
+	//
 	if(     c == 0b1000 && cx == 0b1110)	c = 1;
 	else if(c == 0b1111 && cx == 0b0000)	c = 2;
 	else 					return 0;
@@ -292,8 +310,8 @@ char ShockCollarRemote::receive() {
 					       &&   p == power)
 		return 2;
 
-	// We're good, copy the data into the object, and signal that we
-	// have a shiny new packet.
+	// Copy the data into the object, and signal that we have a
+	// shiny new packet.
 	//
 	key	= k;
 	chan	= c;

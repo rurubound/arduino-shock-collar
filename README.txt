@@ -13,8 +13,8 @@ and code by Smouldery and mikey_dk:
 
 Note that while I used Smouldery's code and underlying work to determine
 packet formats, encoding et c, and I thank them for doing that ground
-work, this code is a complete re-write (with a much smaller code/data
-footprint).
+work, this code is a complete re-write, designed to be used as a
+callable library, and with a much smaller code/data footprint.
 
 
 -- Hardware --
@@ -84,23 +84,30 @@ For example, to check for pending data on the serial, use:
 	...
 	ShockCollar collar;
 	...
+	void setup() {
 		collar.begin(14);
 		collar.interrupt = keypress;
+		...
 
 The following high-level methods are provided. As long as you're not
 trying to do something weird, these are likely to be the only calls you
 need.
 
 void begin(char pin, char led)
+void begin(char pin)
 
 	Call this method to set up the data and LED outputs on the
 	device.
 
 	pin	Defines the output data pin 
-	led	Define the LED pin to flash on activity. Defaults to
-		none (-1).
+	led	Define the LED pin to flash on activity. If not
+		specified, defaults to none (-1).
 
 int command(collar_cmd cmd, char chan, char powr, long durn)
+int led(  chan, durn)
+int beep( chan, durn)
+int vib(  chan, durn, pwr)
+int zap(  chan, durn, pwr)
 
 	Format and send collar commands for the specified duration.
 	Returns 1 if successful, 0 if error, or 2 if interrupted.
@@ -117,19 +124,15 @@ int command(collar_cmd cmd, char chan, char powr, long durn)
 
 	Note that the collar key should be set up (it defauilts to 0x1234).
 
-	There are four "shortcut" methods that just call command():
-
-		led(  chan, durn)	Light the LED
-		beep( chan, durn)	Beep the buzzer
-		vib(  chan, durn, pwr)	Buzz the vibrator	
-		zap(  chan, durn, pwr)	Zap the brat
+	The four "shortcut" methods, led(), beep(), vib() & zap() just
+	call command() with appropriate parameters.
 
 void keepalive()
 
 	Call this regularly to ensure the collar doesn't go to sleep
 	(done by sending a COLAR_LED command). The function has an
 	internal timer to limit transmission to approx once every two
-	minutes. The variable kchan must be set to 1, 2 or 3 (3 - both 
+	minutes. The variable kchan must be set to 1, 2 or 3 (3 = both 
 	channels).
 
 And these are the low-level methods (which the above functions call).
@@ -191,13 +194,14 @@ different keys.
 
 If using multiple objects, the keeplive method should be called
 regularly on all objects. Two objects can not be be commanded
-simultaenously however; for that you would need to use the packet()
-method to construct packets for each object, then repeatedly call the
-send() method for each constructed packet in turn. (This is what the
-command() method does internally for each channel).
+"simultaenously" (really on alternate packets) however; for that you
+would need to use the packet() method to construct packets for each
+object, then repeatedly call the send() method for each constructed
+packet in turn. (This is what the command() method does internally.)
 
-Note that a command takes bout 48ms to be transmitted, so commanding too
-many may mean the packjets for a given coller get spaced too far apart,
+Note that a command takes bout 50ms to be transmitted, so cycling
+through too many may mean the packets for a given collar get spaced too
+far apart.
 
 
 -- ShockCollarRemote object --
@@ -252,10 +256,11 @@ char receive()
 	previous one. This if you hold down the remote button, the first
 	packet received will return a 1, and subsequent packets a 2; if
 	you release the button and press it again, the next packet will
-	be returned with 1.
+	be returned with 1. 
 
 	When a non-zero return code is received, the key, chan, command,
-	and power values will be valid for that packet.
+	and power values will be valid for that packet. (They are only
+	updated when the method returns 1.)
 
 	Polls should not be more than about 100 microseconds apart, as
 	the protocol relies on timing the length of pulses.
@@ -267,7 +272,8 @@ for two relays:
 -------------------------------------------------------------------------------
 #include <ShockCollar.h>
 ShockCollarRemote remote;	// Remote object
-char onoff[2];			// Relay status
+char onoff[2];			// Relay status relay[0] = channel 1
+				//		relay[1] = channel 2
 
 void setup() {			// Initial set-up
 	int relay;
@@ -284,7 +290,7 @@ void loop() {			// Loop de loop
 	if(remote.receive() != 1) return; 	// Command received?
 	if(remote.command != COLLAR_LED) return;// Need LED command
 	remote.expect_key = remote.key;		// Lock to 1st remote used
-	relay = collar.chan - 1;   		// Pick relay	
+	relay = collar.chan - 1;   		// Pick relay 0 or 1
 	onoff[relay] = ! onoff[relay]; 		// Toggle status
 	digitalWrite(10 + relay, onoff[relay]);	// And set the relay.
 }
@@ -312,29 +318,33 @@ Example (each char represents 250 microseconds, _=low, X=high):
 		   <li><---chan---><------mode----><----------key---------- ...
 		    1      000	          1000		      10101...
 
-The packet format, in bits, as as follows, fields sent high-order bit first 
+The packet format, in bits, is as follows, fields sent high-order bit first 
 (left to right):
 
 	Octet	Field	  Bits	Value	   
 	0	Lead-in   1	1
-		Channel   3	Ch1=000; Ch2=111
+		Chan	  3	Channel, Ch1=000; Ch2=111
 		Mode	  4	LED=1000; BEEP=0100; VIB=0010; ZAP=0001
 	1-2	Key	  16	Identity field, specific to transmitter[2]
 	3	Power	  8	Power level[2]
 	4	ModeX	  4	LED=1110; BEEP=1101; VIB=1011; ZAP=0111
-		ChannelX  3	Ch1=111; Ch2=000
+		ChanX	  3	Ch1=111; Ch2=000
 	4/5	Trailer   2	00
 
 Example: Chan=1, Key=0xabcd, Mode=ZAP, Power=100 (0x64)
 	Octet:	     0	       | 1	 |2	  | 3	    | 4 	|5
 	Bit:	     7 654 3210| 76543210|76543210| 76543210| 7654 321 0|7
-	Wire bit:    0 123 4567| 89111111|11112222| 22222233| 3333 333 3|4
-			       |   012345|67890123| 45678901| 2345 678 9|0
-	Fields:      1 ccc mmmm| kkkkkkkk|kkkkkkkk| pppppppp| MMMM CCC 0|0
+			       |   111111|11112222| 22222233| 3333 333 3|4
+	Wire bit:    0 123 4567| 89012345|67890123| 45678901| 2345 678 9|0
+	Fields:      l ccc mmmm| kkkkkkkk|kkkkkkkk| pppppppp| MMMM CCC t|t
 	Field bits:  - 2-0 3--0|15------8|7------0| 7------0| 3--0 2-0 -|-
 	Packet bits: 1 000 0001| 10101011|11001101| 01100100| 0111 111 0|0
 	Hex	     8	   1   | a   b	 |c   d   | 6	4   | 7    e	|0
-	Fields: c=Channel; m=Mode; k=Key; p=Power, M=ModeX, C=ChannelX
+	Fields: l=Lead-in c=Chan m=Mode k=Key p=Power M=ModeX C=ChanX t=Trailer
+
+Packets are typically transmitted with ~10ms idle between packets, giving
+a total transmission time of about 50ms per packet.
+
 
 Notes
 [1] In Smouldery's code, the delays were 741 and 247, presumably to
