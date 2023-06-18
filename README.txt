@@ -306,13 +306,13 @@ and transmits a signal when the pin is high.
 
 The on-air encoding is 1000 bps (1 ms per bit), pulse-width modulated.
 Timings (in microseconds) [1]:
-	Start bit:	mark 1500, space 750
+	Start flag:	mark 1500, space 750
 	0 bit:		mark  250, space 750
 	1 bit:		mark  750, space 250
 	inter-packet:	~9ms
 
 Example (each char represents 250 microseconds, _=low, X=high):
-    Idle  Start    0   1   2   3   4   5   6   7   8   9   10  11  12  13   ...
+    Idle  Flag     0   1   2   3   4   5   6   7   8   9   10  11  12  13   ...
 ... ______XXXXXX___XXX_X___X___X___XXX_X___X___X___XXX_X___XXX_X___XXX_X___ ...
 		   1   0   0   0   1   0   0   0   1   0   1   0   1   0    ...
 		   <li><---chan---><------mode----><----------key---------- ...
@@ -345,6 +345,22 @@ Example: Chan=1, Key=0xabcd, Mode=ZAP, Power=100 (0x64)
 Packets are typically transmitted with ~10ms idle between packets, giving
 a total transmission time of about 50ms per packet.
 
+There is an optional LEADIN #define to force the transmitter to send
+two extra start flags before the actual start flag, but only if there
+has been a significant gap between packets. (Consecutive paskets are
+sent without the intervening extra flags.) Without this, a single
+packet would not be received by either a collar or another arduino
+running as a receiver; if two packets are sent, the second one gets
+received but not the first. With the extra flags, a single packet
+transmission is reliably received.
+
+Some experimentation suggests this is to do with receivers not "locking"
+onto the incoming signal until they have had signal for some time to
+lock to and this period of positive signal needs to run for longer than
+the normal start flag. This trait appears to be shared by both the actual
+collars' receivers and the receiver modules that come with the
+transmitter modules. Thus sending these extra flags makes this code more
+reliable than a handheld remote.
 
 Notes
 [1] In Smouldery's code, the delays were 741 and 247, presumably to

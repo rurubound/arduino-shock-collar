@@ -13,6 +13,15 @@
 
 #define COLLAR_KEEPALIVE 120000         // Frequency (ms) of keepalive messages
 
+// Timings
+// Bits are on-LONG-off-SHORT for one, on-SHORT-off-LONG for zero.
+//
+#define BIT_FLAG  1500,750	// Start bit, 1500 microseconds on, 750 off
+#define BIT_ZERO   250,750	// Short (0),  250 microseconds on, 750 off
+#define BIT_ONE    750,250	// Long  (1),  750 microseconds on, 250 off
+#define IPG	      7300	// Inter-packet gap (us)
+#define LEADIN			// Hack to inject extra start bits
+
 //-- Construct a command packet------------------------------------------------
 // Returns 1 if packet buffer formats correctly, 0 otherwise
 // pkt	= buffer to place packet in. 
@@ -53,20 +62,20 @@ int ShockCollar::packet(collar_pkt &pkt,
 	// First, set the Lead-in, Channel, ChanX and Trailer values, based on
 	// the channel number.
 	//
-	pkt[0] = 0;		// Force invalid packet
-	switch(chan) {		//     lcccmmmm         MMMMCCCt
-	case 1: 		h =  0b10000000;  t = 0b00001110;	break;
-	case 2: 		h =  0b11110000;  t = 0b00000000;	break;
+	pkt[0] = 0;	  // Force invalid packet
+	switch(chan) {	  //     lcccmmmm         MMMMCCCt
+	case 1: 	  h =  0b10000000;  t = 0b00001110;		break;
+	case 2: 	  h =  0b11110000;  t = 0b00000000;		break;
 	default:		return 0;
 	}
 
 	// And then apply the Mode and ModeX values based on the command.
 	//
-	switch(cmd) {		//     lcccmmmm         MMMMCCCt
-	case COLLAR_LED:	h |= 0b00001000; t |= 0b11100000;	break;
-	case COLLAR_BEEP:	h |= 0b00000100; t |= 0b11010000;	break;
-	case COLLAR_VIB:	h |= 0b00000010; t |= 0b10110000;	break;
-	case COLLAR_ZAP:	h |= 0b00000001; t |= 0b01110000;	break;
+	switch(cmd) {	  //     lcccmmmm         MMMMCCCt
+	case COLLAR_LED:  h |= 0b00001000; t |= 0b11100000;  pwr = 0; 	break;
+	case COLLAR_BEEP: h |= 0b00000100; t |= 0b11010000;  pwr = 0;	break;
+	case COLLAR_VIB:  h |= 0b00000010; t |= 0b10110000;		break;
+	case COLLAR_ZAP:  h |= 0b00000001; t |= 0b01110000;		break;
 	default:		return 0;
 	}
 
@@ -93,41 +102,49 @@ int ShockCollar::packet(collar_pkt &pkt,
 // off delay for the trailer bit.
 // Note that this code blocks during packet transmission.
 //
-void ShockCollar::sendpulse(long &clk, int on, int off) {
-	delayMicroseconds(clk - micros());
+void ShockCollar::sendpulse(int on, int off) {
+	long t = sclk - micros();
+	if(t > 0) delayMicroseconds(t);
 	digitalWrite(collar_pin, HIGH);
-	delayMicroseconds(on - 2);
+	delayMicroseconds(on - 5);
 	digitalWrite(collar_pin, LOW);
-	clk += on + off;
+	sclk += on + off;
 }
-
-// Timings
-// Bits are on-LONG-off-SHORT for one, on-SHORT-off-LONG for zero.
-//
-#define BIT_START 1500,750	// Start bit, 1500 microseconds on, 750 off
-#define BIT_ZERO   250,750	// Short (0),  250 microseconds on, 750 off
-#define BIT_ONE    750,250	// Long  (1),  750 microseconds on, 250 off
 
 // And the actual function.
 // pkt	= pointer to packet buffer formatted by packet().
-// 
+//
 void ShockCollar::send(collar_pkt &pkt) {
-	long clk;	// Timer context
 	char bit;	// Bit counter
-	
+	unsigned long t;
+
+	if(!pkt || !(pkt[0] & 0x80)) return;		// Ignore invalid
+	if(collar_led >= 0) digitalWrite(collar_led, HIGH); // Blinkenlight
+
+	// If the clock isn't within an IPG (plus the length of the
+	// previous closing stop bit, reset it. This will also detect a
+	// gap between packets. If we're sending extra  leading flags
+	// to give receivers a chance to lock, send them now.
+	//
+	t = micros();
+	if(sclk - t > IPG + 750) {
+		sclk = t;
+#ifdef LEADIN
+		sendpulse(BIT_FLAG);				// Extra start bits to
+		sendpulse(BIT_FLAG);				// wake the radio up
+#endif
+	}
+
 	// Send the packet (with the indicator LED lit)
 	//
-	if(!pkt || !(pkt[0] & 0x80)) return;		// Ignore invalid
-	if(collar_led >= 0) digitalWrite(collar_led, HIGH);	// Blinkenlight
-	clk = micros(); 				// Start bit clock
-	sendpulse(clk, BIT_START);			// Long start pulse
+	sendpulse(BIT_FLAG);				// Long start pulse
 	for(bit = 0; bit < 40; bit++)			// 40 data bits
 		if((pkt[bit >> 3] >> (7 - (bit & 7))) & 1)
-			sendpulse(clk, BIT_ONE);	// High-order first
-		else	sendpulse(clk, BIT_ZERO);
-	sendpulse(clk, BIT_ZERO);			// Send 2nd trailer bit
+			sendpulse(BIT_ONE);		// High-order first
+		else	sendpulse(BIT_ZERO);
+	sendpulse(BIT_ZERO);				// Send 2nd trailer bit
 	if(collar_led >= 0) digitalWrite(collar_led, LOW);
-	delayMicroseconds(9000);			// 9ms inter-packet
+	sclk += (long)IPG;				// Advance clock to IPG
 }
 
 
@@ -152,14 +169,13 @@ int ShockCollar::command(collar_cmd cmd, char chan, char pwr, long durn) {
 	//
 	if(chan & 1) if(!packet(pkt1, key, 1, cmd, pwr)) return 0;
 	if(chan & 2) if(!packet(pkt2, key, 2, cmd, pwr)) return 0;
-
 	for(;;) {
 		// Check for interruptions, or completion of time limit
 		// or packet count
 		//
 		if(interrupt) if(interrupt()) return 2;
 		if((durn >= 0 && millis() - t >= durn) ||
-		   (durn  < 0 && ++durn >= 0))
+		   (durn  < 0 && durn++ >= 0))
 			return 1;
 
 		// Send packets
@@ -196,6 +212,7 @@ void ShockCollar::begin(char pin, char led) {
 	key = 0x1234;			// Default
         kchan = 0;
 	interrupt = 0;
+	sclk = micros();
 	pinMode(pin, OUTPUT);		// Set transmitter pin as output
 	digitalWrite(pin, LOW);		// Turn off radio
 	if(led >= 0) {
@@ -271,7 +288,7 @@ char ShockCollarRemote::receive() {
 	// Extract the bits from the packet
 	// pkt[4] is pkt[0] complemented and reversed. So when we check
 	// values in pkt[0] (c & m) for validity, we'll also check that
-	// the pkt[4] fields (mx & cx) also hold appropriate values.
+	// the pkt[4] fields (mx & cx) also hold corresponding values.
 	//
 	c =  pkt[0] >> 4;		// Channel & lead-in bit
 	m =  pkt[0] & 0xf;		// Mode (command)

@@ -28,8 +28,9 @@ class ShockCollar {
 private:
 	char collar_pin;		// Data pin to send via
 	char collar_led;		// Data pin to flash activity LED
-	unsigned long lastkeepalive = 0;		// Last KA packet time
-	void sendpulse(long &clk, int on, int off);	// Send a pulse
+	unsigned long sclk;		// Transmit clock
+	unsigned long lastkeepalive = 0;	// Last KA packet time
+	void sendpulse(int on, int off);	// Send a pulse
 
 public:
 	// Parameters
