@@ -10,8 +10,9 @@
 #ifndef ShockCollar_h
 #define ShockCollar_h
 
-// Some data types
+// Some data types & constants
 //
+#define COLLAR_DEFAULT_KEY 0x1234
 enum collar_cmd {
  	COLLAR_NONE = 0,		// Placeholder
 	COLLAR_LED,			// Light LED

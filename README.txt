@@ -20,12 +20,12 @@ callable library, and with a much smaller code/data footprint.
 -- Hardware --
 
 This code was tested on Arduino-style ATmega32U4 boards (a SparkFun Pro
-Micro clone, and a an SS Micro, a similar board with less pins brough
+Micro clone, and a an SS Micro, a similar board with less pins brought
 out to make a smaller form factor. These are coupled with a 433 MHz ASK 
 transmitter (to test the conllar control) and receiver (to test receiving
 commands from the handheld controller); these typically come as a pair.
 
-For the transmitter, onnect the radio's DATA pin to data pin 14 of the
+For the transmitter, connect the radio's DATA pin to data pin 14 of the
 SS Micro Vcc to 5V, and GND to GND. USB power is sufficient. This
 arrangement allows the two small boards to be mounted piggyback, with
 the antenna opposite the USB plug. (I have only tested the receiver using
@@ -356,7 +356,7 @@ transmission is reliably received.
 
 Some experimentation suggests this is to do with receivers not "locking"
 onto the incoming signal until they have had signal for some time to
-lock to and this period of positive signal needs to run for longer than
+lock to, and this period of positive signal needs to run for longer than
 the normal start flag. This trait appears to be shared by both the actual
 collars' receivers and the receiver modules that come with the
 transmitter modules. Thus sending these extra flags makes this code more
@@ -369,8 +369,10 @@ Notes
     each bit, so we don't have to worry about how long the inter-bit
     processing takes - we just wait the remaining time before starting
     the on pulse of the next bit. The actual device doesn't seem too
-    fussy. (The receiver code allows for a lot of slop in the timings,
-    mainly to allow for delays between samples.)
+    fuss, and real remote contollers seem to use slightly shorter bit
+    times than these. (The receiver code allows for a lot of slop in the
+    timings, mainly to allow for delays between samples.)
+
 [2] Smouldery's code had the key and power at 17 and 7 bits
     respectively. Experimentation showed that a 17th "key" bit is not
     used as part of the identity (i.e setting it to 1 or 0 did not
